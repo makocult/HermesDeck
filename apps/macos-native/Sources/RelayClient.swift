@@ -28,11 +28,16 @@ final class RelayClient: @unchecked Sendable {
     }
 
     func messages(token: String, channelId: String, limit: Int = 80, before: String? = nil) async throws -> [Message] {
-        var path = "/api/channels/\(channelId)/messages?limit=\(limit)"
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
         if let before {
-            path += "&before=\(before.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? before)"
+            queryItems.append(URLQueryItem(name: "before", value: before))
         }
-        return try await request(path: path, method: "GET", token: token)
+        return try await request(
+            path: "/api/channels/\(channelId)/messages",
+            method: "GET",
+            token: token,
+            queryItems: queryItems
+        )
     }
 
     func createChannel(token: String, name: String, members: [String], routingMode: String) async throws -> Channel {
@@ -139,9 +144,17 @@ final class RelayClient: @unchecked Sendable {
         path: String,
         method: String,
         token: String?,
-        body: [String: Any]? = nil
+        body: [String: Any]? = nil,
+        queryItems: [URLQueryItem] = []
     ) async throws -> T {
-        var request = URLRequest(url: baseURL.appending(path: path))
+        var components = URLComponents(url: baseURL.appending(path: path), resolvingAgainstBaseURL: false)
+        if !queryItems.isEmpty {
+            components?.queryItems = queryItems
+        }
+        guard let url = components?.url else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         if let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "authorization")
