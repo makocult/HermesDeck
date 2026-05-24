@@ -12,6 +12,7 @@ struct HermesDeckNativeApp: App {
                     await store.bootstrap()
                 }
         }
+        .defaultSize(width: 1024, height: 768)
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandMenu("Hermes Deck") {

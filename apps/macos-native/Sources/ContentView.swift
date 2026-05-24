@@ -14,7 +14,7 @@ struct ContentView: View {
             }
             ChatView(isSidebarCollapsed: $isSidebarCollapsed)
         }
-        .frame(minWidth: 1024, minHeight: 768)
+        .frame(minWidth: 800, minHeight: 600)
         .background(DeckColor.surface)
         .ignoresSafeArea(.container, edges: .top)
         .animation(.easeInOut(duration: 0.18), value: isSidebarCollapsed)
@@ -1233,7 +1233,7 @@ struct ComposerView: View {
                 .frame(maxWidth: 420)
             }
 
-            HStack(spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 Button {
                     store.isSlashMenuOpen.toggle()
                     Task { await store.loadSlashCommands() }
@@ -1260,9 +1260,9 @@ struct ComposerView: View {
                         }
                     }
                     .focused($isFocused)
-                    .frame(minHeight: 20, maxHeight: 92)
+                    .frame(height: 20)
                 }
-                .frame(minHeight: 20, alignment: .leading)
+                .frame(height: 20, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Button {
                     Task { await store.sendDraft() }
@@ -1277,13 +1277,13 @@ struct ComposerView: View {
                 .opacity(store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : 1)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 12)
-            .frame(minHeight: 44)
+            .frame(height: 44)
             .background(DeckColor.composer)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 12)
+        .frame(height: store.isSlashMenuOpen || store.draft.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/") ? nil : 68)
         .background(DeckColor.surface)
     }
 }
@@ -1345,6 +1345,7 @@ struct ComposerTextView: NSViewRepresentable {
         let scrollView = NSScrollView()
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = false
+        scrollView.hasHorizontalScroller = false
         let textView = ComposerNSTextView()
         textView.delegate = context.coordinator
         textView.onSend = onSend
@@ -1358,9 +1359,11 @@ struct ComposerTextView: NSViewRepresentable {
         textView.textContainerInset = .zero
         textView.textContainer?.lineFragmentPadding = 0
         textView.minSize = NSSize(width: 0, height: 20)
-        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: 92)
-        textView.isVerticallyResizable = true
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: 20)
+        textView.isVerticallyResizable = false
         textView.isHorizontallyResizable = false
+        textView.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: 20)
+        textView.textContainer?.widthTracksTextView = true
         textView.autoresizingMask = [.width]
         scrollView.documentView = textView
         return scrollView
