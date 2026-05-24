@@ -1,0 +1,29 @@
+{
+  "name": "hermes-deck",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "npm run build -w @hermes-deck/shared && npm run build -ws --if-present",
+    "check": "npm run build -w @hermes-deck/shared && npm run check -ws --if-present",
+    "dev:relay": "npm run dev -w @hermes-deck/relay",
+    "dev:connector:mac": "npm run dev -w @hermes-deck/connector -- --agent mac-hermes",
+    "dev:connector:compute": "npm run dev -w @hermes-deck/connector -- --agent compute-hermes",
+    "dev:desktop": "npm run dev -w @hermes-deck/desktop",
+    "build:mac-app": "scripts/build-macos-app.sh",
+    "install:mac-app": "INSTALL_TO_APPLICATIONS=1 scripts/build-macos-app.sh",
+    "acceptance:local": "scripts/acceptance-local.sh",
+    "preview:local": "scripts/dev-preview.sh",
+    "preview:stop": "scripts/stop-preview.sh",
+    "build:native-mac-app": "scripts/build-native-macos-app.sh",
+    "install:native-mac-app": "INSTALL_TO_APPLICATIONS=1 scripts/build-native-macos-app.sh",
+    "test": "npm run test -ws --if-present"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hermes
+      POSTGRES_PASSWORD: hermes
+      POSTGRES_DB: hermes_deck
+    ports:
+      - "55432:5432"
+    volumes:
+      - hermes_deck_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hermes -d hermes_deck"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  hermes_deck_pg:
