@@ -18,6 +18,8 @@ final class DeckStore: ObservableObject {
 
     let client = RelayClient()
     private var socketTask: URLSessionWebSocketTask?
+    private var pendingDeltas: [String: String] = [:]
+    private var deltaFlushTask: Task<Void, Never>?
 
     var selectedChannel: Channel? {
         channels.first { $0.id == selectedChannelId }
@@ -231,22 +233,7 @@ final class DeckStore: ObservableObject {
         case let .messageCreated(_, message), let .messageUpdated(_, message):
             upsert(message)
         case let .responseDelta(channelId, messageId, _, delta):
-            var messages = messagesByChannel[channelId] ?? []
-            if let index = messages.firstIndex(where: { $0.id == messageId }) {
-                let old = messages[index]
-                messages[index] = Message(
-                    id: old.id,
-                    channel_id: old.channel_id,
-                    sender_type: old.sender_type,
-                    sender_id: old.sender_id,
-                    content_type: old.content_type,
-                    content: old.content + delta,
-                    status: "delivered",
-                    created_at: old.created_at,
-                    targets: old.targets
-                )
-                messagesByChannel[channelId] = messages
-            }
+            enqueueDelta(channelId: channelId, messageId: messageId, delta: delta)
         case .agentStatusChanged, .channelUpdated:
             Task { await refresh() }
         case .ignored:
@@ -262,6 +249,45 @@ final class DeckStore: ObservableObject {
             messages.append(message)
         }
         messagesByChannel[message.channel_id] = messages
+    }
+
+    private func enqueueDelta(channelId: String, messageId: String, delta: String) {
+        let key = "\(channelId)\u{1f}\(messageId)"
+        pendingDeltas[key, default: ""] += delta
+        guard deltaFlushTask == nil else { return }
+        deltaFlushTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            flushPendingDeltas()
+        }
+    }
+
+    private func flushPendingDeltas() {
+        let deltas = pendingDeltas
+        pendingDeltas.removeAll()
+        deltaFlushTask = nil
+        for (key, delta) in deltas {
+            let parts = key.split(separator: "\u{1f}", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { continue }
+            appendDelta(channelId: parts[0], messageId: parts[1], delta: delta)
+        }
+    }
+
+    private func appendDelta(channelId: String, messageId: String, delta: String) {
+        var messages = messagesByChannel[channelId] ?? []
+        guard let index = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        let old = messages[index]
+        messages[index] = Message(
+            id: old.id,
+            channel_id: old.channel_id,
+            sender_type: old.sender_type,
+            sender_id: old.sender_id,
+            content_type: old.content_type,
+            content: old.content + delta,
+            status: "delivered",
+            created_at: old.created_at,
+            targets: old.targets
+        )
+        messagesByChannel[channelId] = messages
     }
 
     private func parseTargets(content: String, channel: Channel) -> [String] {

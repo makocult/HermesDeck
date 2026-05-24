@@ -69,6 +69,10 @@ struct Message: Identifiable, Decodable, Hashable {
     let status: String
     let created_at: String
     let targets: [MessageTarget]
+
+    var isStreaming: Bool {
+        sender_type == "agent" && status == "queued" && content.isEmpty
+    }
 }
 
 enum ClientEvent: Decodable {

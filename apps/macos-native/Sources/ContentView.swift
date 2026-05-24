@@ -441,13 +441,14 @@ struct ChatView: View {
             ChatHeader(isSidebarCollapsed: $isSidebarCollapsed)
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
+                    LazyVStack(alignment: .leading, spacing: 16) {
                         ForEach(store.selectedMessages) { message in
                             MessageView(message: message)
                                 .id(message.id)
                         }
                     }
-                    .padding(12)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
                 }
                 .onChange(of: store.selectedMessages.count) { _, _ in
                     if let last = store.selectedMessages.last {
@@ -514,43 +515,428 @@ struct MessageView: View {
     }
 
     var body: some View {
+        if message.sender_type == "user" {
+            UserMessageView(message: message)
+        } else {
+            AgentMessageView(message: message, senderName: senderName)
+        }
+    }
+}
+
+struct AgentMessageView: View {
+    let message: Message
+    let senderName: String
+
+    var body: some View {
         HStack(alignment: .top, spacing: 6) {
-            Circle()
-                .fill(DeckColor.avatar)
-                .frame(width: 32, height: 32)
+            MessageAvatar()
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 24) {
-                    Text(senderName)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(DeckColor.text)
+                MessageHeader(senderName: senderName, createdAt: message.created_at, content: message.content)
+                MarkdownBody(content: message.isStreaming ? "_Streaming..._" : message.content)
+                MessageFailureView(message: message)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct UserMessageView: View {
+    let message: Message
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Spacer(minLength: 80)
+            VStack(alignment: .trailing, spacing: 4) {
+                HStack(spacing: 8) {
+                    CopyMessageButton(content: message.content)
                     Text(message.created_at.formattedMessageTime())
                         .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(DeckColor.muted)
-                    Spacer(minLength: 0)
-                    Button {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(message.content, forType: .string)
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 12))
-                            .foregroundStyle(DeckColor.muted)
-                    }
-                    .buttonStyle(.plain)
                 }
-                Text(.init(message.content.isEmpty ? "_Streaming..._" : message.content))
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(DeckColor.text)
-                    .lineSpacing(4)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if let failed = message.targets.first(where: { $0.status == "failed" }) {
-                    Text(failed.error ?? "Delivery failed")
-                        .foregroundStyle(.red)
-                        .font(.system(size: 12))
-                }
+                MarkdownBody(content: message.content)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(DeckColor.selectedRow)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                MessageFailureView(message: message)
+            }
+            MessageAvatar()
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+}
+
+struct MessageHeader: View {
+    let senderName: String
+    let createdAt: String
+    let content: String
+
+    var body: some View {
+        HStack(spacing: 24) {
+            Text(senderName)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(DeckColor.text)
+            Text(createdAt.formattedMessageTime())
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(DeckColor.muted)
+            Spacer(minLength: 0)
+            CopyMessageButton(content: content)
+        }
+    }
+}
+
+struct MessageAvatar: View {
+    var body: some View {
+        Circle()
+            .fill(DeckColor.avatar)
+            .frame(width: 32, height: 32)
+    }
+}
+
+struct CopyMessageButton: View {
+    let content: String
+
+    var body: some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(content, forType: .string)
+        } label: {
+            Image(systemName: "doc.on.doc")
+                .font(.system(size: 12))
+                .foregroundStyle(DeckColor.muted)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct MessageFailureView: View {
+    let message: Message
+
+    var body: some View {
+        if let failed = message.targets.first(where: { $0.status == "failed" }) {
+            Text(failed.error ?? "Delivery failed")
+                .foregroundStyle(.red)
+                .font(.system(size: 12))
+                .frame(maxWidth: .infinity, alignment: message.sender_type == "user" ? .trailing : .leading)
+        }
+    }
+}
+
+struct MarkdownBody: View {
+    let content: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(MarkdownParser.blocks(from: content).enumerated()), id: \.offset) { _, block in
+                MarkdownBlockView(block: block)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+struct MarkdownBlockView: View {
+    let block: MarkdownBlock
+
+    var body: some View {
+        switch block {
+        case let .heading(level, text):
+            Text(inlineMarkdown(text))
+                .font(.system(size: level == 1 ? 16 : 14, weight: .semibold))
+                .foregroundStyle(DeckColor.text)
+                .padding(.top, level == 1 ? 4 : 2)
+                .textSelection(.enabled)
+        case let .paragraph(text):
+            Text(inlineMarkdown(text))
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(DeckColor.text)
+                .lineSpacing(4)
+                .textSelection(.enabled)
+        case let .quote(text):
+            HStack(alignment: .top, spacing: 8) {
+                Rectangle()
+                    .fill(DeckColor.border)
+                    .frame(width: 3)
+                Text(inlineMarkdown(text))
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(DeckColor.muted)
+                    .lineSpacing(4)
+                    .textSelection(.enabled)
+            }
+        case let .list(items, ordered, checked):
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(marker(index: index, ordered: ordered, checked: checked[index]))
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(DeckColor.muted)
+                            .frame(width: ordered ? 24 : 16, alignment: .trailing)
+                        Text(inlineMarkdown(item))
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(DeckColor.text)
+                            .lineSpacing(4)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+        case let .code(language, code):
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    if !language.isEmpty {
+                        Text(language)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(DeckColor.muted)
+                    }
+                    Spacer()
+                    CopyMessageButton(content: code)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(code)
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .foregroundStyle(DeckColor.text)
+                        .textSelection(.enabled)
+                        .padding(10)
+                }
+            }
+            .background(DeckColor.composer)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        case let .table(rows):
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { rowIndex, row in
+                    HStack(spacing: 0) {
+                        ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
+                            Text(inlineMarkdown(cell))
+                                .font(.system(size: 12, weight: rowIndex == 0 ? .semibold : .regular))
+                                .foregroundStyle(DeckColor.text)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .frame(minWidth: 88, maxWidth: .infinity, alignment: .leading)
+                                .border(DeckColor.border, width: 0.5)
+                        }
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        case .separator:
+            Rectangle()
+                .fill(DeckColor.border)
+                .frame(height: 1)
+                .padding(.vertical, 4)
+        }
+    }
+
+    private func marker(index: Int, ordered: Bool, checked: Bool?) -> String {
+        if let checked {
+            return checked ? "☑" : "☐"
+        }
+        return ordered ? "\(index + 1)." : "•"
+    }
+
+    private func inlineMarkdown(_ text: String) -> AttributedString {
+        let options = AttributedString.MarkdownParsingOptions(
+            interpretedSyntax: .inlineOnlyPreservingWhitespace,
+            failurePolicy: .returnPartiallyParsedIfPossible
+        )
+        if let parsed = try? AttributedString(markdown: text, options: options) {
+            return parsed
+        }
+        return AttributedString(text)
+    }
+}
+
+enum MarkdownBlock {
+    case heading(level: Int, text: String)
+    case paragraph(String)
+    case quote(String)
+    case list(items: [String], ordered: Bool, checked: [Bool?])
+    case code(language: String, code: String)
+    case table([[String]])
+    case separator
+}
+
+enum MarkdownParser {
+    static func blocks(from content: String) -> [MarkdownBlock] {
+        let lines = content.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        var blocks: [MarkdownBlock] = []
+        var paragraph: [String] = []
+        var listItems: [String] = []
+        var listChecks: [Bool?] = []
+        var listOrdered = false
+        var inCode = false
+        var codeLanguage = ""
+        var codeLines: [String] = []
+
+        func flushParagraph() {
+            let text = paragraph.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { blocks.append(.paragraph(text)) }
+            paragraph.removeAll()
+        }
+
+        func flushList() {
+            if !listItems.isEmpty {
+                blocks.append(.list(items: listItems, ordered: listOrdered, checked: listChecks))
+            }
+            listItems.removeAll()
+            listChecks.removeAll()
+            listOrdered = false
+        }
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if inCode {
+                if trimmed.hasPrefix("```") {
+                    blocks.append(.code(language: codeLanguage, code: codeLines.joined(separator: "\n")))
+                    inCode = false
+                    codeLanguage = ""
+                    codeLines.removeAll()
+                } else {
+                    codeLines.append(line)
+                }
+                continue
+            }
+
+            if trimmed.hasPrefix("```") {
+                flushParagraph()
+                flushList()
+                inCode = true
+                codeLanguage = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+                continue
+            }
+
+            if trimmed.isEmpty {
+                flushParagraph()
+                flushList()
+                continue
+            }
+
+            if trimmed == "---" || trimmed == "⸻" {
+                flushParagraph()
+                flushList()
+                blocks.append(.separator)
+                continue
+            }
+
+            if let heading = parseHeading(trimmed) {
+                flushParagraph()
+                flushList()
+                blocks.append(.heading(level: heading.level, text: heading.text))
+                continue
+            }
+
+            if trimmed.hasPrefix(">") {
+                flushParagraph()
+                flushList()
+                blocks.append(.quote(String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)))
+                continue
+            }
+
+            if let item = parseListItem(trimmed) {
+                flushParagraph()
+                if listItems.isEmpty {
+                    listOrdered = item.ordered
+                } else if listOrdered != item.ordered {
+                    flushList()
+                    listOrdered = item.ordered
+                }
+                listItems.append(item.text)
+                listChecks.append(item.checked)
+                continue
+            }
+
+            if isTableLine(trimmed) {
+                flushParagraph()
+                flushList()
+                let row = parseTableRow(trimmed)
+                if !row.isEmpty {
+                    blocks.append(.table([row]))
+                }
+                continue
+            }
+
+            flushList()
+            paragraph.append(line)
+        }
+
+        if inCode {
+            blocks.append(.code(language: codeLanguage, code: codeLines.joined(separator: "\n")))
+        }
+        flushParagraph()
+        flushList()
+        return mergeTables(blocks)
+    }
+
+    private static func parseHeading(_ line: String) -> (level: Int, text: String)? {
+        let hashes = line.prefix { $0 == "#" }.count
+        guard (1...6).contains(hashes), line.dropFirst(hashes).first == " " else { return nil }
+        return (hashes, String(line.dropFirst(hashes + 1)))
+    }
+
+    private static func parseListItem(_ line: String) -> (ordered: Bool, checked: Bool?, text: String)? {
+        for marker in ["- ", "* ", "+ "] where line.hasPrefix(marker) {
+            let raw = String(line.dropFirst(marker.count))
+            let parsed = parseTask(raw)
+            return (false, parsed.checked, parsed.text)
+        }
+        guard let dot = line.firstIndex(of: ".") else { return nil }
+        let prefix = line[..<dot]
+        guard !prefix.isEmpty, prefix.allSatisfy(\.isNumber) else { return nil }
+        let after = line[line.index(after: dot)...]
+        guard after.first == " " else { return nil }
+        return (true, nil, String(after.dropFirst()))
+    }
+
+    private static func parseTask(_ value: String) -> (checked: Bool?, text: String) {
+        if value.hasPrefix("[x] ") || value.hasPrefix("[X] ") {
+            return (true, String(value.dropFirst(4)))
+        }
+        if value.hasPrefix("[ ] ") {
+            return (false, String(value.dropFirst(4)))
+        }
+        return (nil, value)
+    }
+
+    private static func isTableLine(_ line: String) -> Bool {
+        line.hasPrefix("|") && line.hasSuffix("|") && line.contains("|")
+    }
+
+    private static func parseTableRow(_ line: String) -> [String] {
+        line
+            .trimmingCharacters(in: CharacterSet(charactersIn: "|"))
+            .components(separatedBy: "|")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    private static func isTableSeparator(_ row: [String]) -> Bool {
+        !row.isEmpty && row.allSatisfy { cell in
+            let clean = cell.replacingOccurrences(of: ":", with: "").replacingOccurrences(of: "-", with: "")
+            return clean.trimmingCharacters(in: .whitespaces).isEmpty && cell.contains("-")
+        }
+    }
+
+    private static func mergeTables(_ blocks: [MarkdownBlock]) -> [MarkdownBlock] {
+        var merged: [MarkdownBlock] = []
+        var pendingRows: [[String]] = []
+        for block in blocks {
+            if case let .table(rows) = block {
+                pendingRows.append(contentsOf: rows)
+                continue
+            }
+            flushRows(&pendingRows, into: &merged)
+            merged.append(block)
+        }
+        flushRows(&pendingRows, into: &merged)
+        return merged
+    }
+
+    private static func flushRows(_ rows: inout [[String]], into blocks: inout [MarkdownBlock]) {
+        guard !rows.isEmpty else { return }
+        let filtered = rows.filter { !isTableSeparator($0) }
+        if !filtered.isEmpty {
+            blocks.append(.table(filtered))
+        }
+        rows.removeAll()
     }
 }
 
