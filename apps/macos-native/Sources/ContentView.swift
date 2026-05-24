@@ -287,6 +287,27 @@ enum DeckColor {
     static let placeholder = Color(nsColor: NSColor.placeholderTextColor)
     static let avatar = Color(red: 133 / 255, green: 133 / 255, blue: 125 / 255)
     static let online = Color(red: 48 / 255, green: 214 / 255, blue: 105 / 255)
+    static let tableHeader = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.isDarkMode ? NSColor(red: 0.18, green: 0.18, blue: 0.21, alpha: 1) : NSColor(red: 246 / 255, green: 247 / 255, blue: 250 / 255, alpha: 1)
+    })
+    static let codeHeader = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.isDarkMode ? NSColor(red: 0.15, green: 0.15, blue: 0.17, alpha: 1) : NSColor(red: 242 / 255, green: 244 / 255, blue: 247 / 255, alpha: 1)
+    })
+    static let codeBackground = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.isDarkMode ? NSColor(red: 0.11, green: 0.11, blue: 0.13, alpha: 1) : NSColor(red: 250 / 255, green: 251 / 255, blue: 253 / 255, alpha: 1)
+    })
+    static let codeKeyword = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.isDarkMode ? NSColor(red: 0.55, green: 0.70, blue: 1.00, alpha: 1) : NSColor(red: 0.20, green: 0.34, blue: 0.78, alpha: 1)
+    })
+    static let codeString = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.isDarkMode ? NSColor(red: 0.78, green: 0.66, blue: 0.44, alpha: 1) : NSColor(red: 0.57, green: 0.32, blue: 0.04, alpha: 1)
+    })
+    static let codeNumber = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.isDarkMode ? NSColor(red: 0.73, green: 0.58, blue: 0.94, alpha: 1) : NSColor(red: 0.45, green: 0.25, blue: 0.74, alpha: 1)
+    })
+    static let codeComment = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.isDarkMode ? NSColor(red: 0.45, green: 0.55, blue: 0.49, alpha: 1) : NSColor(red: 0.36, green: 0.49, blue: 0.40, alpha: 1)
+    })
 }
 
 private extension NSAppearance {
@@ -548,13 +569,13 @@ struct AgentMessageView: View {
         HStack(alignment: .top, spacing: 6) {
             MessageAvatar()
             VStack(alignment: .leading, spacing: 4) {
-                MessageHeader(senderName: senderName, createdAt: message.created_at, content: message.content)
+                MessageHeader(senderName: senderName, createdAt: message.created_at)
                 if let activity = store.activitiesByMessage[message.id] {
                     AgentActivityView(activity: activity)
                 } else if message.isStreaming {
                     AgentTypingView()
                 }
-                MarkdownBody(content: message.isStreaming ? "_Streaming..._" : message.content)
+                MarkdownBody(content: message.isStreaming ? "_Streaming..._" : message.content, baseFontSize: 13)
                 MessageFailureView(message: message)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -623,12 +644,12 @@ struct UserMessageView: View {
             Spacer(minLength: 80)
             VStack(alignment: .trailing, spacing: 4) {
                 HStack(spacing: 8) {
-                    CopyMessageButton(content: message.content)
                     Text(message.created_at.formattedMessageTime())
                         .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(DeckColor.muted)
                 }
-                MarkdownBody(content: message.content)
+                MarkdownBody(content: message.content, fillsWidth: false)
+                    .frame(maxWidth: 560, alignment: .leading)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(DeckColor.selectedRow)
@@ -644,7 +665,6 @@ struct UserMessageView: View {
 struct MessageHeader: View {
     let senderName: String
     let createdAt: String
-    let content: String
 
     var body: some View {
         HStack(spacing: 24) {
@@ -655,7 +675,6 @@ struct MessageHeader: View {
                 .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(DeckColor.muted)
             Spacer(minLength: 0)
-            CopyMessageButton(content: content)
         }
     }
 }
@@ -699,32 +718,35 @@ struct MessageFailureView: View {
 
 struct MarkdownBody: View {
     let content: String
+    var baseFontSize: CGFloat = 12
+    var fillsWidth = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(MarkdownParser.blocks(from: content).enumerated()), id: \.offset) { _, block in
-                MarkdownBlockView(block: block)
+                MarkdownBlockView(block: block, baseFontSize: baseFontSize)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
     }
 }
 
 struct MarkdownBlockView: View {
     let block: MarkdownBlock
+    let baseFontSize: CGFloat
 
     var body: some View {
         switch block {
         case let .heading(level, text):
             Text(inlineMarkdown(text))
-                .font(.system(size: level == 1 ? 16 : 14, weight: .semibold))
+                .font(.system(size: baseFontSize + (level == 1 ? 4 : 2), weight: .semibold))
                 .foregroundStyle(DeckColor.text)
                 .padding(.top, level == 1 ? 4 : 2)
                 .textSelection(.enabled)
         case let .paragraph(text):
             Text(inlineMarkdown(text))
-                .font(.system(size: 12, weight: .regular))
+                .font(.system(size: baseFontSize, weight: .regular))
                 .foregroundStyle(DeckColor.text)
                 .lineSpacing(4)
                 .textSelection(.enabled)
@@ -734,7 +756,7 @@ struct MarkdownBlockView: View {
                     .fill(DeckColor.border)
                     .frame(width: 3)
                 Text(inlineMarkdown(text))
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: baseFontSize, weight: .regular))
                     .foregroundStyle(DeckColor.muted)
                     .lineSpacing(4)
                     .textSelection(.enabled)
@@ -744,11 +766,11 @@ struct MarkdownBlockView: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(marker(index: index, ordered: ordered, checked: checked[index]))
-                            .font(.system(size: 12, weight: .regular))
+                            .font(.system(size: baseFontSize, weight: .regular))
                             .foregroundStyle(DeckColor.muted)
                             .frame(width: ordered ? 24 : 16, alignment: .trailing)
                         Text(inlineMarkdown(item))
-                            .font(.system(size: 12, weight: .regular))
+                            .font(.system(size: baseFontSize, weight: .regular))
                             .foregroundStyle(DeckColor.text)
                             .lineSpacing(4)
                             .textSelection(.enabled)
@@ -756,8 +778,8 @@ struct MarkdownBlockView: View {
                 }
             }
         case let .code(language, code):
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
                     if !language.isEmpty {
                         Text(language)
                             .font(.system(size: 10, weight: .medium))
@@ -766,39 +788,173 @@ struct MarkdownBlockView: View {
                     Spacer()
                     CopyMessageButton(content: code)
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(DeckColor.codeHeader)
                 ScrollView(.horizontal, showsIndicators: false) {
-                    Text(code)
-                        .font(.system(size: 12, weight: .regular, design: .monospaced))
-                        .foregroundStyle(DeckColor.text)
+                    Text(highlightedCode(code, language: language))
+                        .font(.system(size: baseFontSize, weight: .regular, design: .monospaced))
                         .textSelection(.enabled)
-                        .padding(10)
+                        .padding(12)
                 }
             }
-            .background(DeckColor.composer)
+            .background(DeckColor.codeBackground)
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(DeckColor.border, lineWidth: 1)
+            }
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         case let .table(rows):
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { rowIndex, row in
-                    HStack(spacing: 0) {
-                        ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
-                            Text(inlineMarkdown(cell))
-                                .font(.system(size: 12, weight: rowIndex == 0 ? .semibold : .regular))
-                                .foregroundStyle(DeckColor.text)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 6)
-                                .frame(minWidth: 88, maxWidth: .infinity, alignment: .leading)
-                                .border(DeckColor.border, width: 0.5)
+            ScrollView(.horizontal, showsIndicators: false) {
+                Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                    ForEach(Array(normalizedRows(rows).enumerated()), id: \.offset) { rowIndex, row in
+                        GridRow {
+                            ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
+                                tableCell(cell, isHeader: rowIndex == 0)
+                            }
                         }
                     }
                 }
+                .background(DeckColor.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(DeckColor.border, lineWidth: 1)
+                }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         case .separator:
             Rectangle()
                 .fill(DeckColor.border)
                 .frame(height: 1)
                 .padding(.vertical, 4)
         }
+    }
+
+    private func tableCell(_ cell: String, isHeader: Bool) -> some View {
+        ZStack(alignment: .leading) {
+            (isHeader ? DeckColor.tableHeader : Color.clear)
+            Text(inlineMarkdown(cell))
+                .font(.system(size: baseFontSize, weight: isHeader ? .semibold : .regular))
+                .foregroundStyle(isHeader ? DeckColor.headerText : DeckColor.text)
+                .lineLimit(nil)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .frame(minWidth: 120, maxWidth: 260, alignment: .leading)
+        }
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(DeckColor.border)
+                .frame(width: 0.5)
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(DeckColor.border)
+                .frame(height: 0.5)
+        }
+    }
+
+    private func normalizedRows(_ rows: [[String]]) -> [[String]] {
+        let width = rows.map(\.count).max() ?? 0
+        return rows.map { row in
+            if row.count >= width { return row }
+            return row + Array(repeating: "", count: width - row.count)
+        }
+    }
+
+    private func highlightedCode(_ code: String, language: String) -> AttributedString {
+        var result = AttributedString()
+        let keywords = syntaxKeywords(language: language)
+        let lines = code.components(separatedBy: "\n")
+        for (lineIndex, line) in lines.enumerated() {
+            result += highlightedLine(line, keywords: keywords)
+            if lineIndex < lines.count - 1 {
+                result += AttributedString("\n")
+            }
+        }
+        return result
+    }
+
+    private func highlightedLine(_ line: String, keywords: Set<String>) -> AttributedString {
+        let commentStart = findCommentStart(in: line)
+        let codePart = commentStart.map { String(line[..<$0]) } ?? line
+        let commentPart = commentStart.map { String(line[$0...]) }
+        var output = highlightCodePart(codePart, keywords: keywords)
+        if let commentPart {
+            var comment = AttributedString(commentPart)
+            comment.foregroundColor = DeckColor.codeComment
+            output += comment
+        }
+        return output
+    }
+
+    private func highlightCodePart(_ line: String, keywords: Set<String>) -> AttributedString {
+        var output = AttributedString()
+        var index = line.startIndex
+        while index < line.endIndex {
+            let char = line[index]
+            if char == "\"" || char == "'" {
+                let end = scanStringEnd(in: line, from: index, quote: char)
+                var token = AttributedString(String(line[index...end]))
+                token.foregroundColor = DeckColor.codeString
+                output += token
+                index = line.index(after: end)
+            } else if char.isNumber {
+                let end = line[index...].firstIndex { !$0.isNumber && $0 != "." } ?? line.endIndex
+                var token = AttributedString(String(line[index..<end]))
+                token.foregroundColor = DeckColor.codeNumber
+                output += token
+                index = end
+            } else if char.isLetter || char == "_" {
+                let end = line[index...].firstIndex { !$0.isLetter && !$0.isNumber && $0 != "_" } ?? line.endIndex
+                let word = String(line[index..<end])
+                var token = AttributedString(word)
+                token.foregroundColor = keywords.contains(word) ? DeckColor.codeKeyword : DeckColor.text
+                output += token
+                index = end
+            } else {
+                var token = AttributedString(String(char))
+                token.foregroundColor = DeckColor.text
+                output += token
+                index = line.index(after: index)
+            }
+        }
+        return output
+    }
+
+    private func findCommentStart(in line: String) -> String.Index? {
+        if let swift = line.range(of: "//")?.lowerBound {
+            return swift
+        }
+        return line.range(of: "#")?.lowerBound
+    }
+
+    private func scanStringEnd(in line: String, from start: String.Index, quote: Character) -> String.Index {
+        var index = line.index(after: start)
+        var escaped = false
+        while index < line.endIndex {
+            let char = line[index]
+            if char == quote && !escaped {
+                return index
+            }
+            escaped = char == "\\" && !escaped
+            if char != "\\" { escaped = false }
+            index = line.index(after: index)
+        }
+        return line.index(before: line.endIndex)
+    }
+
+    private func syntaxKeywords(language: String) -> Set<String> {
+        let common: Set<String> = [
+            "as", "async", "await", "break", "case", "catch", "class", "const", "continue",
+            "default", "do", "else", "enum", "export", "false", "for", "from", "func",
+            "function", "guard", "if", "import", "in", "let", "nil", "null", "private",
+            "public", "return", "static", "struct", "switch", "throw", "throws", "true",
+            "try", "type", "var", "while"
+        ]
+        if language.lowercased().contains("sql") {
+            return common.union(["select", "from", "where", "insert", "update", "delete", "join", "left", "right", "group", "order", "by", "limit"])
+        }
+        return common
     }
 
     private func marker(index: Int, ordered: Bool, checked: Bool?) -> String {
