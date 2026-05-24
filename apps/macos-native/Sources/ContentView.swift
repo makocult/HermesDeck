@@ -723,12 +723,40 @@ struct MarkdownBody: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(MarkdownParser.blocks(from: content).enumerated()), id: \.offset) { _, block in
+            ForEach(Array(MarkdownRenderCache.shared.blocks(from: content).enumerated()), id: \.offset) { _, block in
                 MarkdownBlockView(block: block, baseFontSize: baseFontSize)
             }
         }
         .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+@MainActor
+final class MarkdownRenderCache {
+    static let shared = MarkdownRenderCache()
+    private let cache = NSCache<NSString, MarkdownBlockBox>()
+
+    private init() {
+        cache.countLimit = 360
+    }
+
+    func blocks(from content: String) -> [MarkdownBlock] {
+        let key = content as NSString
+        if let cached = cache.object(forKey: key) {
+            return cached.blocks
+        }
+        let blocks = MarkdownParser.blocks(from: content)
+        cache.setObject(MarkdownBlockBox(blocks), forKey: key)
+        return blocks
+    }
+}
+
+final class MarkdownBlockBox {
+    let blocks: [MarkdownBlock]
+
+    init(_ blocks: [MarkdownBlock]) {
+        self.blocks = blocks
     }
 }
 

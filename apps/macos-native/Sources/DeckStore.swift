@@ -3,6 +3,8 @@ import SwiftUI
 
 @MainActor
 final class DeckStore: ObservableObject {
+    private let maxMessagesPerChannel = 180
+
     @Published var token: String?
     @Published var agents: [Agent] = []
     @Published var channels: [Channel] = []
@@ -260,6 +262,7 @@ final class DeckStore: ObservableObject {
         } else {
             messages.append(message)
         }
+        messages = trimMessages(messages)
         messagesByChannel[message.channel_id] = messages
     }
 
@@ -317,7 +320,13 @@ final class DeckStore: ObservableObject {
             created_at: old.created_at,
             targets: old.targets
         )
+        messages = trimMessages(messages)
         messagesByChannel[channelId] = messages
+    }
+
+    private func trimMessages(_ messages: [Message]) -> [Message] {
+        guard messages.count > maxMessagesPerChannel else { return messages }
+        return Array(messages.suffix(maxMessagesPerChannel))
     }
 
     private func parseTargets(content: String, channel: Channel) -> [String] {
