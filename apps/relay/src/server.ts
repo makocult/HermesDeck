@@ -294,6 +294,19 @@ app.get("/ws/agent", { websocket: true }, async (socket, request) => {
       }
       return;
     }
+    if (event.type === "agent.activity") {
+      broadcast({
+        type: "agent.activity",
+        channel_id: event.channel_id,
+        message_id: event.response_message_id,
+        agent_id: event.agent_id,
+        activity_kind: event.activity_kind,
+        phase: event.phase,
+        text: event.text,
+        tool_name: event.tool_name
+      });
+      return;
+    }
     if (event.type === "agent.error") {
       await db.addMessageTarget(event.request_message_id, event.agent_id, "failed", event.error);
       const message = await db.getMessage(event.request_message_id);

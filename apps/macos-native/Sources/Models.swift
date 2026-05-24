@@ -75,10 +75,42 @@ struct Message: Identifiable, Decodable, Hashable {
     }
 }
 
+struct AgentActivity: Identifiable, Equatable {
+    let id: String
+    let messageId: String
+    let agentId: String
+    let kind: String
+    let phase: String
+    let text: String
+    let toolName: String?
+
+    var isActive: Bool {
+        phase != "completed" && phase != "cleared"
+    }
+}
+
+struct SlashCommand: Identifiable, Hashable {
+    let name: String
+    let description: String
+    let category: String
+
+    var id: String { name }
+
+    static let fallbacks = [
+        SlashCommand(name: "/status", description: "Show Hermes Agent status", category: "Deck"),
+        SlashCommand(name: "/clear-context", description: "Clear the current channel context", category: "Deck"),
+        SlashCommand(name: "/summarize", description: "Summarize the current channel", category: "Deck"),
+        SlashCommand(name: "/settings", description: "Open channel or Agent settings", category: "Deck"),
+        SlashCommand(name: "/invite", description: "Invite an Agent to this channel", category: "Deck"),
+        SlashCommand(name: "/new-channel", description: "Create a new channel", category: "Deck")
+    ]
+}
+
 enum ClientEvent: Decodable {
     case messageCreated(channelId: String, message: Message)
     case messageUpdated(channelId: String, message: Message)
     case responseDelta(channelId: String, messageId: String, agentId: String, delta: String)
+    case agentActivity(channelId: String, messageId: String, agentId: String, kind: String, phase: String, text: String, toolName: String?)
     case agentStatusChanged(agentId: String, status: String)
     case channelUpdated(Channel)
     case ignored
@@ -89,6 +121,10 @@ enum ClientEvent: Decodable {
         case message
         case message_id
         case agent_id
+        case activity_kind
+        case phase
+        case text
+        case tool_name
         case status
         case delta
         case channel
@@ -114,6 +150,16 @@ enum ClientEvent: Decodable {
                 messageId: try container.decode(String.self, forKey: .message_id),
                 agentId: try container.decode(String.self, forKey: .agent_id),
                 delta: try container.decode(String.self, forKey: .delta)
+            )
+        case "agent.activity":
+            self = .agentActivity(
+                channelId: try container.decode(String.self, forKey: .channel_id),
+                messageId: try container.decode(String.self, forKey: .message_id),
+                agentId: try container.decode(String.self, forKey: .agent_id),
+                kind: try container.decode(String.self, forKey: .activity_kind),
+                phase: try container.decode(String.self, forKey: .phase),
+                text: try container.decode(String.self, forKey: .text),
+                toolName: try container.decodeIfPresent(String.self, forKey: .tool_name)
             )
         case "agent.status.changed":
             self = .agentStatusChanged(

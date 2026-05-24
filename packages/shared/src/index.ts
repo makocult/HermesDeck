@@ -125,6 +125,17 @@ export interface ClientAgentCompletedEvent {
   agent_id: string;
 }
 
+export interface ClientAgentActivityEvent {
+  type: "agent.activity";
+  channel_id: string;
+  message_id: string;
+  agent_id: string;
+  activity_kind: "typing" | "status" | "tool";
+  phase: "started" | "progress" | "completed" | "cleared";
+  text: string;
+  tool_name?: string;
+}
+
 export interface ClientAgentStatusChangedEvent {
   type: "agent.status.changed";
   agent_id: string;
@@ -141,6 +152,7 @@ export type ClientWsEvent =
   | ClientMessageUpdatedEvent
   | ClientAgentDeltaEvent
   | ClientAgentCompletedEvent
+  | ClientAgentActivityEvent
   | ClientAgentStatusChangedEvent
   | ClientChannelUpdatedEvent;
 
@@ -180,11 +192,24 @@ export interface ConnectorErrorEvent {
   error: string;
 }
 
+export interface ConnectorAgentActivityEvent {
+  type: "agent.activity";
+  channel_id: string;
+  request_message_id: string;
+  response_message_id: string;
+  agent_id: string;
+  activity_kind: "typing" | "status" | "tool";
+  phase: "started" | "progress" | "completed" | "cleared";
+  text: string;
+  tool_name?: string;
+}
+
 export type ConnectorToRelayEvent =
   | ConnectorHelloEvent
   | ConnectorHeartbeatEvent
   | ConnectorResponseDeltaEvent
   | ConnectorResponseCompletedEvent
+  | ConnectorAgentActivityEvent
   | ConnectorErrorEvent;
 
 export interface DispatchMessageEvent {

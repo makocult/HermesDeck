@@ -79,6 +79,24 @@ final class LocalHermesManager: ObservableObject {
         return result.ok
     }
 
+    func discoverSlashCommands() async -> [SlashCommand] {
+        await withCheckedContinuation { continuation in
+            let gateway = HermesTuiGatewayProcess()
+            gateway.start { ready in
+                guard ready else {
+                    gateway.stop()
+                    continuation.resume(returning: SlashCommand.fallbacks)
+                    return
+                }
+                gateway.request(method: "commands.catalog", params: [:]) { response in
+                    let commands = parseSlashCommandResponse(response)
+                    gateway.stop()
+                    continuation.resume(returning: commands.isEmpty ? SlashCommand.fallbacks : commands)
+                }
+            }
+        }
+    }
+
     func startConnectorIfNeeded(store: DeckStore) {
         if connector == nil {
             connector = LocalHermesConnector(store: store)
@@ -273,6 +291,19 @@ final class LocalHermesConnector {
                         "agent_id": event.agent_id,
                         "delta": delta
                     ])
+                },
+                onActivity: { [weak self] activity in
+                    self?.send([
+                        "type": "agent.activity",
+                        "channel_id": event.channel_id,
+                        "request_message_id": event.message_id,
+                        "response_message_id": event.response_message_id,
+                        "agent_id": event.agent_id,
+                        "activity_kind": activity.kind,
+                        "phase": activity.phase,
+                        "text": activity.text,
+                        "tool_name": activity.toolName ?? ""
+                    ])
                 }
             )
             send([
@@ -369,14 +400,16 @@ final class HermesTuiRunner: @unchecked Sendable {
     private var finalContinuation: CheckedContinuation<String, Error>?
     private var collected = ""
     private var onDelta: ((String) -> Void)?
+    private var onActivity: ((HermesActivity) -> Void)?
 
-    func submit(_ text: String, onDelta: @escaping (String) -> Void) async throws -> String {
+    func submit(_ text: String, onDelta: @escaping (String) -> Void, onActivity: @escaping (HermesActivity) -> Void) async throws -> String {
         try await ensureReady()
         guard let gateway, let sessionId else {
             throw LocalHermesError("Hermes TUI Gateway is not ready")
         }
         self.collected = ""
         self.onDelta = onDelta
+        self.onActivity = onActivity
         return try await withCheckedThrowingContinuation { continuation in
             self.finalContinuation = continuation
             gateway.request(method: "prompt.submit", params: ["session_id": sessionId, "text": text]) { response in
@@ -435,12 +468,41 @@ final class HermesTuiRunner: @unchecked Sendable {
            !text.isEmpty {
             collected += text
             onDelta?(text)
+        } else if type == "message.start" {
+            onActivity?(HermesActivity(kind: "typing", phase: "started", text: "输入中...", toolName: nil))
+        } else if type == "status.update",
+                  let payload = event["payload"] as? [String: Any],
+                  let text = payload["text"] as? String,
+                  !text.isEmpty {
+            onActivity?(HermesActivity(kind: "status", phase: "progress", text: text, toolName: nil))
+        } else if type == "thinking.delta",
+                  let payload = event["payload"] as? [String: Any],
+                  let text = payload["text"] as? String,
+                  !text.isEmpty {
+            onActivity?(HermesActivity(kind: "status", phase: "progress", text: text, toolName: nil))
+        } else if type == "tool.start",
+                  let payload = event["payload"] as? [String: Any] {
+            let name = payload["name"] as? String ?? "tool"
+            let context = payload["context"] as? String ?? ""
+            onActivity?(HermesActivity(kind: "tool", phase: "started", text: context.isEmpty ? "调用工具 \(name)" : context, toolName: name))
+        } else if type == "tool.progress",
+                  let payload = event["payload"] as? [String: Any] {
+            let name = payload["name"] as? String ?? "tool"
+            let preview = payload["preview"] as? String ?? "工具运行中"
+            onActivity?(HermesActivity(kind: "tool", phase: "progress", text: preview, toolName: name))
+        } else if type == "tool.complete",
+                  let payload = event["payload"] as? [String: Any] {
+            let name = payload["name"] as? String ?? "tool"
+            let summary = payload["summary"] as? String ?? "工具调用完成"
+            onActivity?(HermesActivity(kind: "tool", phase: "completed", text: summary, toolName: name))
         } else if type == "message.complete",
                   let payload = event["payload"] as? [String: Any] {
             let text = (payload["text"] as? String) ?? collected
+            onActivity?(HermesActivity(kind: "typing", phase: "cleared", text: "", toolName: nil))
             finish(value: text)
         } else if type == "error",
                   let payload = event["payload"] as? [String: Any] {
+            onActivity?(HermesActivity(kind: "typing", phase: "cleared", text: "", toolName: nil))
             finish(error: payload["message"] as? String ?? "Hermes returned an error")
         }
     }
@@ -449,6 +511,7 @@ final class HermesTuiRunner: @unchecked Sendable {
         let continuation = finalContinuation
         finalContinuation = nil
         onDelta = nil
+        onActivity = nil
         continuation?.resume(returning: value)
     }
 
@@ -456,7 +519,35 @@ final class HermesTuiRunner: @unchecked Sendable {
         let continuation = finalContinuation
         finalContinuation = nil
         onDelta = nil
+        onActivity = nil
         continuation?.resume(throwing: LocalHermesError(error))
+    }
+}
+
+struct HermesActivity {
+    let kind: String
+    let phase: String
+    let text: String
+    let toolName: String?
+}
+
+private func parseSlashCommandResponse(_ response: [String: Any]?) -> [SlashCommand] {
+    guard let response else { return [] }
+    if let categories = response["categories"] as? [[String: Any]] {
+        return categories.flatMap { category in
+            let categoryName = category["name"] as? String ?? "Hermes"
+            let pairs = category["pairs"] as? [[Any]] ?? []
+            return pairs.compactMap { pair -> SlashCommand? in
+                guard let rawName = pair.first as? String else { return nil }
+                let description = pair.dropFirst().first as? String ?? ""
+                return SlashCommand(name: rawName, description: description, category: categoryName)
+            }
+        }
+    }
+    let pairs = response["pairs"] as? [[Any]] ?? []
+    return pairs.compactMap { pair in
+        guard let rawName = pair.first as? String else { return nil }
+        return SlashCommand(name: rawName, description: pair.dropFirst().first as? String ?? "", category: "Hermes")
     }
 }
 

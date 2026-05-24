@@ -8,6 +8,9 @@ final class DeckStore: ObservableObject {
     @Published var channels: [Channel] = []
     @Published var selectedChannelId: String?
     @Published var messagesByChannel: [String: [Message]] = [:]
+    @Published var activitiesByMessage: [String: AgentActivity] = [:]
+    @Published var slashCommands: [SlashCommand] = SlashCommand.fallbacks
+    @Published var isSlashMenuOpen = false
     @Published var draft = ""
     @Published var errorMessage: String?
     @Published var isCreatingChannel = false
@@ -88,6 +91,13 @@ final class DeckStore: ObservableObject {
             upsert(message)
         } catch {
             errorMessage = "Message failed. For manual channels, mention an Agent such as @ComputeHermes."
+        }
+    }
+
+    func loadSlashCommands() async {
+        let commands = await localHermes.discoverSlashCommands()
+        if !commands.isEmpty {
+            slashCommands = commands
         }
     }
 
@@ -234,6 +244,8 @@ final class DeckStore: ObservableObject {
             upsert(message)
         case let .responseDelta(channelId, messageId, _, delta):
             enqueueDelta(channelId: channelId, messageId: messageId, delta: delta)
+        case let .agentActivity(_, messageId, agentId, kind, phase, text, toolName):
+            updateActivity(messageId: messageId, agentId: agentId, kind: kind, phase: phase, text: text, toolName: toolName)
         case .agentStatusChanged, .channelUpdated:
             Task { await refresh() }
         case .ignored:
@@ -249,6 +261,24 @@ final class DeckStore: ObservableObject {
             messages.append(message)
         }
         messagesByChannel[message.channel_id] = messages
+    }
+
+    private func updateActivity(messageId: String, agentId: String, kind: String, phase: String, text: String, toolName: String?) {
+        if phase == "cleared" {
+            if activitiesByMessage[messageId]?.kind == kind {
+                activitiesByMessage.removeValue(forKey: messageId)
+            }
+            return
+        }
+        activitiesByMessage[messageId] = AgentActivity(
+            id: "\(messageId)-\(kind)-\(toolName ?? "activity")",
+            messageId: messageId,
+            agentId: agentId,
+            kind: kind,
+            phase: phase,
+            text: text,
+            toolName: toolName
+        )
     }
 
     private func enqueueDelta(channelId: String, messageId: String, delta: String) {
