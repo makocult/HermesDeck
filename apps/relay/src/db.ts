@@ -113,6 +113,7 @@ export class Database {
       );
     `);
     await this.pool.query("alter table agents add column if not exists archived_at timestamptz");
+    await this.pool.query("create index if not exists messages_channel_created_idx on messages (channel_id, created_at desc, id desc)");
   }
 
   async seedUser(email: string, password: string) {
@@ -430,18 +431,35 @@ export class Database {
     return this.hydrateMessage(result.rows[0]);
   }
 
-  async listMessages(channelId: string, limit = 80) {
+  async listMessages(channelId: string, limit = 80, before?: string) {
+    const cappedLimit = Math.max(1, Math.min(limit, 120));
+    const beforeMessage = before ? await this.getMessageCursor(before) : null;
+    const cursorClause = beforeMessage
+      ? "and (created_at, id) < ($3::timestamptz, $4::text)"
+      : "";
+    const args = beforeMessage
+      ? [channelId, cappedLimit, beforeMessage.created_at, beforeMessage.id]
+      : [channelId, cappedLimit];
     const result = await this.pool.query(
       `select * from messages
        where channel_id = $1
+       ${cursorClause}
        order by created_at desc
        limit $2`,
-      [channelId, limit]
+      args
     );
     const messages = await Promise.all(
       result.rows.reverse().map((row) => this.hydrateMessage(row))
     );
     return messages;
+  }
+
+  private async getMessageCursor(id: string) {
+    const result = await this.pool.query<{ id: string; created_at: string }>(
+      "select id, created_at from messages where id = $1",
+      [id]
+    );
+    return result.rows[0] ?? null;
   }
 
   private async hydrateChannel(row: Record<string, unknown>): Promise<Channel> {

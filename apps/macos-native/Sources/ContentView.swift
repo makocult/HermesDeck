@@ -463,9 +463,21 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 16) {
+                        if store.isLoadingOlderMessages {
+                            HStack {
+                                Spacer()
+                                ProgressView()
+                                    .controlSize(.small)
+                                Spacer()
+                            }
+                            .padding(.vertical, 8)
+                        }
                         ForEach(store.selectedMessages) { message in
                             MessageView(message: message)
                                 .id(message.id)
+                                .onAppear {
+                                    Task { await store.loadOlderMessagesIfNeeded(current: message) }
+                                }
                         }
                     }
                     .padding(.horizontal, 24)

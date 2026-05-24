@@ -151,7 +151,13 @@ app.delete(
 
 app.get("/api/channels/:id/messages", { preHandler: requireAuth }, async (request) => {
   const params = z.object({ id: z.string() }).parse(request.params);
-  return db.listMessages(params.id);
+  const query = z
+    .object({
+      limit: z.coerce.number().int().min(1).max(120).optional(),
+      before: z.string().optional()
+    })
+    .parse(request.query);
+  return db.listMessages(params.id, query.limit ?? 80, query.before);
 });
 
 app.post("/api/channels/:id/messages", { preHandler: requireAuth }, async (request, reply) => {

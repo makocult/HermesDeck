@@ -3,13 +3,16 @@ import SwiftUI
 
 @MainActor
 final class DeckStore: ObservableObject {
-    private let maxMessagesPerChannel = 180
+    private let initialMessagePageSize = 60
+    private let olderMessagePageSize = 40
+    private let maxMessagesPerChannel = 160
 
     @Published var token: String?
     @Published var agents: [Agent] = []
     @Published var channels: [Channel] = []
     @Published var selectedChannelId: String?
     @Published var messagesByChannel: [String: [Message]] = [:]
+    @Published var isLoadingOlderMessages = false
     @Published var activitiesByMessage: [String: AgentActivity] = [:]
     @Published var slashCommands: [SlashCommand] = SlashCommand.fallbacks
     @Published var isSlashMenuOpen = false
@@ -25,6 +28,7 @@ final class DeckStore: ObservableObject {
     private var socketTask: URLSessionWebSocketTask?
     private var pendingDeltas: [String: String] = [:]
     private var deltaFlushTask: Task<Void, Never>?
+    private var exhaustedHistoryChannels: Set<String> = []
 
     var selectedChannel: Channel? {
         channels.first { $0.id == selectedChannelId }
@@ -71,9 +75,51 @@ final class DeckStore: ObservableObject {
     func loadMessages(channelId: String) async {
         guard let token else { return }
         do {
-            messagesByChannel[channelId] = try await client.messages(token: token, channelId: channelId)
+            let messages = try await client.messages(token: token, channelId: channelId, limit: initialMessagePageSize)
+            messagesByChannel[channelId] = messages
+            if messages.count < initialMessagePageSize {
+                exhaustedHistoryChannels.insert(channelId)
+            } else {
+                exhaustedHistoryChannels.remove(channelId)
+            }
         } catch {
             errorMessage = "Failed to load messages."
+        }
+    }
+
+    func loadOlderMessagesIfNeeded(current message: Message) async {
+        guard let channelId = selectedChannelId,
+              message.id == messagesByChannel[channelId]?.first?.id else { return }
+        await loadOlderMessages(channelId: channelId)
+    }
+
+    func loadOlderMessages(channelId: String) async {
+        guard let token,
+              !isLoadingOlderMessages,
+              !exhaustedHistoryChannels.contains(channelId),
+              let oldest = messagesByChannel[channelId]?.first else { return }
+        isLoadingOlderMessages = true
+        defer { isLoadingOlderMessages = false }
+        do {
+            let older = try await client.messages(
+                token: token,
+                channelId: channelId,
+                limit: olderMessagePageSize,
+                before: oldest.id
+            )
+            if older.isEmpty {
+                exhaustedHistoryChannels.insert(channelId)
+                return
+            }
+            var existing = messagesByChannel[channelId] ?? []
+            let existingIds = Set(existing.map(\.id))
+            existing = older.filter { !existingIds.contains($0.id) } + existing
+            messagesByChannel[channelId] = trimMessages(existing)
+            if older.count < olderMessagePageSize {
+                exhaustedHistoryChannels.insert(channelId)
+            }
+        } catch {
+            errorMessage = "Failed to load older messages."
         }
     }
 

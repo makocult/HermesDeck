@@ -27,8 +27,12 @@ final class RelayClient: @unchecked Sendable {
         try await request(path: "/api/channels", method: "GET", token: token)
     }
 
-    func messages(token: String, channelId: String) async throws -> [Message] {
-        try await request(path: "/api/channels/\(channelId)/messages", method: "GET", token: token)
+    func messages(token: String, channelId: String, limit: Int = 80, before: String? = nil) async throws -> [Message] {
+        var path = "/api/channels/\(channelId)/messages?limit=\(limit)"
+        if let before {
+            path += "&before=\(before.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? before)"
+        }
+        return try await request(path: path, method: "GET", token: token)
     }
 
     func createChannel(token: String, name: String, members: [String], routingMode: String) async throws -> Channel {
