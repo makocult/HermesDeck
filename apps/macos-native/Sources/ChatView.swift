@@ -149,7 +149,11 @@ struct AgentMessageView: View {
                 } else if message.isStreaming {
                     AgentTypingView()
                 }
-                MarkdownBody(content: message.isStreaming ? "_Streaming..._" : message.content, baseFontSize: DeckTypography.body)
+                MarkdownBody(
+                    content: message.isStreaming ? "_Streaming..._" : message.content,
+                    baseFontSize: DeckTypography.body,
+                    selectablePlainText: true
+                )
                 MessageFailureView(message: message)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

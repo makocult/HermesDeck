@@ -4,15 +4,73 @@ struct MarkdownBody: View {
     let content: String
     var baseFontSize: CGFloat = 12
     var fillsWidth = true
+    var selectablePlainText = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(MarkdownRenderCache.shared.blocks(from: content).enumerated()), id: \.offset) { _, block in
-                MarkdownBlockView(block: block, baseFontSize: baseFontSize)
+        Group {
+            if selectablePlainText {
+                SelectableMarkdownText(content: content, fontSize: baseFontSize)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(MarkdownRenderCache.shared.blocks(from: content).enumerated()), id: \.offset) { _, block in
+                        MarkdownBlockView(block: block, baseFontSize: baseFontSize)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
-        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+struct SelectableMarkdownText: NSViewRepresentable {
+    let content: String
+    let fontSize: CGFloat
+
+    func makeNSView(context: Context) -> NSTextView {
+        let textView = NSTextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isRichText = true
+        textView.drawsBackground = false
+        textView.backgroundColor = .clear
+        textView.textContainerInset = .zero
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return textView
+    }
+
+    func updateNSView(_ textView: NSTextView, context: Context) {
+        textView.textStorage?.setAttributedString(attributedString())
+        textView.invalidateIntrinsicContentSize()
+    }
+
+    private func attributedString() -> NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.minimumLineHeight = fontSize * 1.6
+        paragraph.maximumLineHeight = fontSize * 1.6
+        paragraph.lineBreakMode = .byWordWrapping
+        let font = NSFont.systemFont(ofSize: fontSize, weight: .regular)
+        let markdown = try? AttributedString(
+            markdown: content,
+            options: AttributedString.MarkdownParsingOptions(
+                interpretedSyntax: .inlineOnlyPreservingWhitespace,
+                failurePolicy: .returnPartiallyParsedIfPossible
+            )
+        )
+        let base = markdown.map(NSAttributedString.init) ?? NSAttributedString(string: content)
+        let mutable = NSMutableAttributedString(attributedString: base)
+        let fullRange = NSRange(location: 0, length: mutable.length)
+        mutable.addAttributes([
+            .font: font,
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: paragraph
+        ], range: fullRange)
+        return mutable
     }
 }
 
