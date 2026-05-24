@@ -936,10 +936,16 @@ struct ChannelSettingsView: View {
                 Toggle(agent.name, isOn: Binding(
                     get: { selectedAgentIds.contains(agent.id) },
                     set: { value in
-                        if value { selectedAgentIds.insert(agent.id) }
-                        else { selectedAgentIds.remove(agent.id) }
+                        if channel.type == "direct" {
+                            selectedAgentIds = value ? [agent.id] : []
+                        } else if value {
+                            selectedAgentIds.insert(agent.id)
+                        } else {
+                            selectedAgentIds.remove(agent.id)
+                        }
                     }
                 ))
+                .disabled(channel.type == "direct" && !selectedAgentIds.contains(agent.id))
             }
 
             Spacer()

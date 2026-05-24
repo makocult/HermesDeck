@@ -175,6 +175,7 @@ final class LocalHermesConnector {
     private weak var store: DeckStore?
     private var task: URLSessionWebSocketTask?
     private var heartbeat: Timer?
+    private var helloRetry: Timer?
     private var runners: [String: HermesTuiRunner] = [:]
 
     init(store: DeckStore) {
@@ -189,7 +190,7 @@ final class LocalHermesConnector {
         let task = URLSession.shared.webSocketTask(with: request)
         self.task = task
         task.resume()
-        sendHelloForLocalAgents()
+        scheduleHelloRetry()
         heartbeat?.invalidate()
         heartbeat = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -203,6 +204,21 @@ final class LocalHermesConnector {
         guard let store else { return }
         for agent in store.agents where agent.isLocalHermes {
             send(["type": "agent.hello", "agent_id": agent.id])
+        }
+    }
+
+    private func scheduleHelloRetry() {
+        helloRetry?.invalidate()
+        sendHelloForLocalAgents()
+        helloRetry = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] timer in
+            Task { @MainActor in
+                guard let self else { return }
+                self.sendHelloForLocalAgents()
+                if self.store?.agents.contains(where: { $0.isLocalHermes && $0.status == "online" }) == true {
+                    self.helloRetry?.invalidate()
+                    self.helloRetry = nil
+                }
+            }
         }
     }
 
@@ -221,6 +237,9 @@ final class LocalHermesConnector {
                     Task {
                         await self.handle(text)
                     }
+                } else if case .failure = result {
+                    self.connect()
+                    return
                 }
                 self.receive()
             }

@@ -188,7 +188,7 @@ app.post("/api/channels/:id/messages", { preHandler: requireAuth }, async (reque
     const responseMessageId = `msg_${nanoid()}`;
     await db.addMessageTarget(message.id, agentId, connector ? "queued" : "failed", connector ? undefined : "Agent is offline");
     if (!connector) continue;
-    await db.createMessage({
+    const responseMessage = await db.createMessage({
       id: responseMessageId,
       channelId: channel.id,
       senderType: "agent",
@@ -198,6 +198,9 @@ app.post("/api/channels/:id/messages", { preHandler: requireAuth }, async (reque
       status: "queued",
       metadata: { request_message_id: message.id }
     });
+    if (responseMessage) {
+      broadcast({ type: "message.created", channel_id: channel.id, message: responseMessage });
+    }
     responseBuffers.set(responseMessageId, "");
     connector.send({
       type: "message.dispatch",
