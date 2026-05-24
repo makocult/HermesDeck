@@ -899,6 +899,8 @@ struct ChannelSettingsView: View {
 
     @State private var name: String
     @State private var icon: String
+    @State private var avatarPath: String?
+    @State private var isChoosingAvatar = false
     @State private var routingMode: String
     @State private var selectedAgentIds: Set<String>
 
@@ -906,6 +908,7 @@ struct ChannelSettingsView: View {
         self.channel = channel
         _name = State(initialValue: channel.name)
         _icon = State(initialValue: channel.icon)
+        _avatarPath = State(initialValue: channel.avatarPath)
         _routingMode = State(initialValue: channel.routing_mode)
         _selectedAgentIds = State(initialValue: Set(channel.members.map(\.id)))
     }
@@ -916,11 +919,15 @@ struct ChannelSettingsView: View {
                 .font(.title2)
                 .bold()
 
-            TextField("Name", text: $name)
-                .textFieldStyle(.roundedBorder)
-
-            TextField("Avatar / Icon", text: $icon)
-                .textFieldStyle(.roundedBorder)
+            HStack(alignment: .top, spacing: 12) {
+                settingsAvatarPreview
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Name", text: $name)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Avatar / Icon", text: $icon)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
 
             Picker("Routing", selection: $routingMode) {
                 Text("single").tag("single")
@@ -979,7 +986,8 @@ struct ChannelSettingsView: View {
                             name: name,
                             icon: icon,
                             routingMode: channel.type == "direct" ? "single" : routingMode,
-                            memberIds: Array(selectedAgentIds)
+                            memberIds: Array(selectedAgentIds),
+                            avatarPath: avatarPath
                         )
                         dismiss()
                     }
@@ -989,5 +997,64 @@ struct ChannelSettingsView: View {
             }
         }
         .padding(20)
+        .fileImporter(isPresented: $isChoosingAvatar, allowedContentTypes: [.image]) { result in
+            if case let .success(url) = result {
+                avatarPath = copyAvatar(url)
+            }
+        }
+    }
+
+    private var settingsAvatarPreview: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(DeckColor.avatar)
+            if let avatarPath, let image = NSImage(contentsOfFile: avatarPath) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 48, height: 48)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                Text(String(icon.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1)).uppercased())
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .frame(width: 48, height: 48)
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .onTapGesture {
+            isChoosingAvatar = true
+        }
+        .overlay(alignment: .bottomTrailing) {
+            ZStack {
+                Circle()
+                    .fill(DeckColor.surface)
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(DeckColor.text)
+            }
+            .frame(width: 18, height: 18)
+        }
+    }
+
+    private func copyAvatar(_ url: URL) -> String? {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessed {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        do {
+            let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appending(path: "Hermes Deck/Avatars", directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let ext = url.pathExtension.isEmpty ? "png" : url.pathExtension
+            let destination = dir.appending(path: "\(UUID().uuidString).\(ext)")
+            try? FileManager.default.removeItem(at: destination)
+            try FileManager.default.copyItem(at: url, to: destination)
+            return destination.path
+        } catch {
+            return nil
+        }
     }
 }

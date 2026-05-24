@@ -157,7 +157,14 @@ final class DeckStore: ObservableObject {
         }
     }
 
-    func updateChannel(_ channel: Channel, name: String, icon: String, routingMode: String, memberIds: [String]) async {
+    func updateChannel(
+        _ channel: Channel,
+        name: String,
+        icon: String,
+        routingMode: String,
+        memberIds: [String],
+        avatarPath: String? = nil
+    ) async {
         guard let token else { return }
         do {
             let updated = try await client.updateChannel(
@@ -166,7 +173,8 @@ final class DeckStore: ObservableObject {
                 name: name,
                 routingMode: routingMode,
                 members: memberIds,
-                icon: icon
+                icon: icon,
+                avatarPath: avatarPath
             )
             if let index = channels.firstIndex(where: { $0.id == updated.id }) {
                 channels[index] = updated
