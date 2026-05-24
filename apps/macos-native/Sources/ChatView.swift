@@ -133,9 +133,15 @@ struct AgentMessageView: View {
     let message: Message
     let senderName: String
 
+    private var senderChannel: Channel? {
+        store.channels.first { channel in
+            channel.type == "direct" && channel.members.contains { $0.id == message.sender_id }
+        }
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: DeckMetrics.spacing6) {
-            MessageAvatar()
+            MessageAvatar(channel: senderChannel, fallbackName: senderName)
             VStack(alignment: .leading, spacing: 4) {
                 MessageHeader(senderName: senderName, createdAt: message.created_at)
                 if let activity = store.activitiesByMessage[message.id] {
@@ -248,10 +254,31 @@ struct MessageHeader: View {
 }
 
 struct MessageAvatar: View {
+    var channel: Channel?
+    var fallbackName = ""
+
     var body: some View {
-        Circle()
-            .fill(DeckColor.avatar)
-            .frame(width: DeckMetrics.avatarSize, height: DeckMetrics.avatarSize)
+        ZStack {
+            Circle()
+                .fill(DeckColor.avatar)
+            if let avatarPath = channel?.avatarPath,
+               let image = NSImage(contentsOfFile: avatarPath) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: DeckMetrics.avatarSize, height: DeckMetrics.avatarSize)
+                    .clipShape(Circle())
+            } else if let icon = channel?.icon, icon != "#" && icon != "●" {
+                Text(icon)
+                    .font(.system(size: DeckTypography.body, weight: .semibold))
+                    .foregroundStyle(.white)
+            } else if !fallbackName.isEmpty {
+                Text(String(fallbackName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1)).uppercased())
+                    .font(.system(size: DeckTypography.body, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .frame(width: DeckMetrics.avatarSize, height: DeckMetrics.avatarSize)
     }
 }
 
